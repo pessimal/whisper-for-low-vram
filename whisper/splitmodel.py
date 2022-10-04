@@ -225,6 +225,7 @@ class WhisperSplit(nn.Module):
             # start = time.process_time()
 
             if self.loaded_model == 'decoder':
+                self.loaded_model_obj.to('cpu')
                 del self.loaded_model_obj
                 torch.cuda.empty_cache()
             self.loaded_model_obj = self._encoder.to(self.target_device)
@@ -240,6 +241,7 @@ class WhisperSplit(nn.Module):
             # start = time.process_time()
 
             if self.loaded_model == 'encoder':
+                self.loaded_model_obj.to('cpu')
                 del self.loaded_model_obj
                 torch.cuda.empty_cache()
             self.loaded_model_obj = self._decoder.to(self.target_device)

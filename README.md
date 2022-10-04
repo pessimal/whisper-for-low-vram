@@ -19,7 +19,7 @@ A Transformer sequence-to-sequence model is trained on various speech processing
 
 We used Python 3.9.9 and [PyTorch](https://pytorch.org/) 1.10.1 to train and test our models, but the codebase is expected to be compatible with Python 3.7 or later and recent PyTorch versions. The codebase also depends on a few Python packages, most notably [HuggingFace Transformers](https://huggingface.co/docs/transformers/index) for their fast tokenizer implementation and [ffmpeg-python](https://github.com/kkroening/ffmpeg-python) for reading audio files. The following command will pull and install the latest commit from this repository, along with its Python dependencies 
 
-    pip install git+https://github.com/ProjectEGU/whisper-for-low-vram.git
+    pip install --upgrade git+https://github.com/ProjectEGU/whisper-for-low-vram.git
 
 It also requires the command-line tool [`ffmpeg`](https://ffmpeg.org/) to be installed on your system, which is available from most package managers:
 
