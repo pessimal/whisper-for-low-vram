@@ -11,6 +11,8 @@ from torch import nn
 from .transcribe import transcribe as transcribe_function
 from .decoding import detect_language as detect_language_function, decode as decode_function
 
+import time
+
 
 @dataclass
 class ModelDimensions:
@@ -64,11 +66,11 @@ class MultiHeadAttention(nn.Module):
         self.out = Linear(n_state, n_state)
 
     def forward(
-        self,
-        x: Tensor,
-        xa: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
-        kv_cache: Optional[dict] = None,
+            self,
+            x: Tensor,
+            xa: Optional[Tensor] = None,
+            mask: Optional[Tensor] = None,
+            kv_cache: Optional[dict] = None,
     ):
         q = self.query(x)
 
@@ -115,11 +117,11 @@ class ResidualAttentionBlock(nn.Module):
         self.mlp_ln = LayerNorm(n_state)
 
     def forward(
-        self,
-        x: Tensor,
-        xa: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
-        kv_cache: Optional[dict] = None,
+            self,
+            x: Tensor,
+            xa: Optional[Tensor] = None,
+            mask: Optional[Tensor] = None,
+            kv_cache: Optional[dict] = None,
     ):
         x = x + self.attn(self.attn_ln(x), mask=mask, kv_cache=kv_cache)
         if self.cross_attn:
@@ -182,7 +184,7 @@ class TextDecoder(nn.Module):
             the encoded audio features to be attended on
         """
         offset = next(iter(kv_cache.values())).shape[1] if kv_cache else 0
-        x = self.token_embedding(x) + self.positional_embedding[offset : offset + x.shape[-1]]
+        x = self.token_embedding(x) + self.positional_embedding[offset: offset + x.shape[-1]]
         x = x.to(xa.dtype)
 
         for block in self.blocks:
@@ -194,18 +196,21 @@ class TextDecoder(nn.Module):
         return logits
 
 
-class Whisper(nn.Module):
+class WhisperSplit(nn.Module):
     def __init__(self, dims: ModelDimensions):
         super().__init__()
         self.dims = dims
-        self.encoder = AudioEncoder(
+        self.loaded_model = None
+        self.loaded_model_obj = None
+        self.target_device = None
+        self._encoder = AudioEncoder(
             self.dims.n_mels,
             self.dims.n_audio_ctx,
             self.dims.n_audio_state,
             self.dims.n_audio_head,
             self.dims.n_audio_layer,
         )
-        self.decoder = TextDecoder(
+        self._decoder = TextDecoder(
             self.dims.n_vocab,
             self.dims.n_text_ctx,
             self.dims.n_text_state,
@@ -213,15 +218,56 @@ class Whisper(nn.Module):
             self.dims.n_text_layer,
         )
 
+    @property
+    def encoder(self):
+        if self.loaded_model is None or self.loaded_model != "encoder":
+            # print("Load encoder to " + self.target_device)
+            # start = time.process_time()
+
+            if self.loaded_model == 'decoder':
+                del self.loaded_model_obj
+                torch.cuda.empty_cache()
+            self.loaded_model_obj = self._encoder.to(self.target_device)
+            self.loaded_model = "encoder"
+
+            # print(time.process_time() - start)
+        return self.loaded_model_obj
+
+    @property
+    def decoder(self):
+        if self.loaded_model is None or self.loaded_model != "decoder":
+            # print("Load decoder to " + self.target_device)
+            # start = time.process_time()
+
+            if self.loaded_model == 'encoder':
+                del self.loaded_model_obj
+                torch.cuda.empty_cache()
+            self.loaded_model_obj = self._decoder.to(self.target_device)
+            self.loaded_model = "decoder"
+
+            # print(time.process_time() - start)
+        return self.loaded_model_obj
+
+    def load_state_dict(self, state_dict):
+        for k in list(state_dict.keys()):
+            newKey = k.replace('encoder.', '_encoder.').replace('decoder.', '_decoder.')
+            state_dict[newKey] = state_dict[k]
+            del state_dict[k]
+        return super().load_state_dict(state_dict)
+
     def embed_audio(self, mel: torch.Tensor):
         return self.encoder.forward(mel)
 
     def logits(self, tokens: torch.Tensor, audio_features: torch.Tensor):
         return self.decoder.forward(tokens, audio_features)
 
+    def to(self, device):
+        self.target_device = device
+        return self
+
     @property
     def device(self):
-        return next(self.parameters()).device
+        return self.target_device
 
     @property
     def is_multilingual(self):
@@ -262,4 +308,3 @@ class Whisper(nn.Module):
     detect_language = detect_language_function
     transcribe = transcribe_function
     decode = decode_function
-
